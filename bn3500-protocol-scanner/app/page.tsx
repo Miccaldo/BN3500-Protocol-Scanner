@@ -197,9 +197,7 @@ function resolveLatestFiles(allFiles: File[]): ResolvedFile[] {
     if (dateEntries.length === 0) continue;
 
     // Znajdź najnowszą datę dla tej grupy
-    const sortedDates = [
-      ...new Set(dateEntries.map((e) => e.dateStr)),
-    ].sort();
+    const sortedDates = [...new Set(dateEntries.map((e) => e.dateStr))].sort();
     const latestDate = sortedDates[sortedDates.length - 1];
 
     // Weź tylko pliki z najnowszą datą
@@ -277,26 +275,26 @@ export default function Home() {
 
   const scanFiles = async () => {
     if (!searchTerm.trim() || resolvedFiles.length === 0) return;
-  
+
     setIsScanning(true);
     setResults([]);
     setActiveTab("all");
-  
+
     const BATCH_SIZE = 30;
     const MAX_CONCURRENT = 5; // max 5 requestów naraz
     const total = resolvedFiles.length;
     let completedCount = 0;
-  
+
     setProgress({ current: 0, total });
-  
+
     // Przygotuj batche
     const batches: ResolvedFile[][] = [];
     for (let i = 0; i < total; i += BATCH_SIZE) {
       batches.push(resolvedFiles.slice(i, i + BATCH_SIZE));
     }
-  
+
     const allResults: ScanResult[] = new Array(total);
-  
+
     // Przetwarzaj batch
     const processBatch = async (batch: ResolvedFile[], batchIndex: number) => {
       const formData = new FormData();
@@ -312,13 +310,13 @@ export default function Home() {
           }))
         )
       );
-  
+
       try {
         const res = await fetch("/api/scan", {
           method: "POST",
           body: formData,
         });
-  
+
         if (res.ok) {
           const data = await res.json();
           return data.results as ScanResult[];
@@ -352,46 +350,46 @@ export default function Home() {
         }));
       }
     };
-  
+
     // Kolejka z limitem współbieżności
     let nextBatchIndex = 0;
-  
+
     const runNext = async (): Promise<void> => {
       while (nextBatchIndex < batches.length) {
         const currentIndex = nextBatchIndex;
         nextBatchIndex++;
-  
+
         const batch = batches[currentIndex];
         const startIdx = currentIndex * BATCH_SIZE;
         const batchResults = await processBatch(batch, currentIndex);
-  
+
         // Wstaw wyniki na właściwe pozycje
         batchResults.forEach((result, i) => {
           allResults[startIdx + i] = result;
         });
-  
+
         completedCount += batch.length;
         setProgress({ current: completedCount, total });
-  
+
         // Aktualizuj wyniki na bieżąco (pokaż co już jest)
         setResults([...allResults.filter(Boolean)]);
       }
     };
-  
+
     // Odpal MAX_CONCURRENT workerów równolegle
     const workers = Array.from(
       { length: Math.min(MAX_CONCURRENT, batches.length) },
       () => runNext()
     );
-  
+
     await Promise.all(workers);
-  
+
     // Finalne wyniki
     const finalResults = allResults.filter(Boolean);
     setResults(finalResults);
     setProgress({ current: total, total });
     setIsScanning(false);
-  
+
     if (finalResults.some((r) => r.found)) {
       setActiveTab("found");
     }
@@ -402,14 +400,11 @@ export default function Home() {
   const errorCount = results.filter((r) => r.status === "error").length;
 
   // Grupuj resolved files wg maszyny
-  const machineGroups = resolvedFiles.reduce(
-    (acc, rf) => {
-      if (!acc[rf.machine]) acc[rf.machine] = [];
-      acc[rf.machine].push(rf);
-      return acc;
-    },
-    {} as Record<string, ResolvedFile[]>
-  );
+  const machineGroups = resolvedFiles.reduce((acc, rf) => {
+    if (!acc[rf.machine]) acc[rf.machine] = [];
+    acc[rf.machine].push(rf);
+    return acc;
+  }, {} as Record<string, ResolvedFile[]>);
 
   return (
     <div className="min-h-screen bg-background">
@@ -447,7 +442,6 @@ export default function Home() {
             setDragOver(false);
           }}
         >
-          {/* @ts-expect-error webkitdirectory is non-standard */}
           <input
             ref={fileInputRef}
             type="file"
@@ -463,7 +457,9 @@ export default function Home() {
           </p>
           <p className="mt-1 text-xs text-muted-foreground/70">
             {resolvedFiles.length > 0
-              ? `📁 ${folderName} · ${Object.keys(machineGroups).length} machines · ${resolvedFiles.length} PDFs from latest dates`
+              ? `📁 ${folderName} · ${
+                  Object.keys(machineGroups).length
+                } machines · ${resolvedFiles.length} PDFs from latest dates`
               : "Select root folder (e.g. Protokoły/) — app will auto-detect machines and latest dates"}
           </p>
         </div>
@@ -690,9 +686,7 @@ export default function Home() {
           <Card>
             <CardContent className="py-16">
               <EmptyState
-                icon={
-                  <Inbox className="h-12 w-12 text-muted-foreground/30" />
-                }
+                icon={<Inbox className="h-12 w-12 text-muted-foreground/30" />}
                 title="No folder selected"
                 description="Click the area above to select a protocol folder"
               />
