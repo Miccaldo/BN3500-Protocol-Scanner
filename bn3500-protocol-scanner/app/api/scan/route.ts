@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { extractText, getDocumentProxy } from "unpdf";
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const searchTerm = formData.get("searchTerm") as string;
     const files = formData.getAll("files") as File[];
+    const metadataRaw = formData.get("metadata") as string;
 
     if (!searchTerm?.trim()) {
       return NextResponse.json(
@@ -14,20 +16,39 @@ export async function POST(request: NextRequest) {
     }
 
     if (!files?.length) {
-      return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No files uploaded" },
+        { status: 400 }
+      );
     }
 
-    const pdfParse = (await import("pdf-parse")).default;
+    // Parsuj metadane (machine, dateFolder, fullPath)
+    let metadata: { machine: string; dateFolder: string; fullPath: string }[] =
+      [];
+    try {
+      if (metadataRaw) {
+        metadata = JSON.parse(metadataRaw);
+      }
+    } catch {
+      // Jeśli nie parsuje — ignorujemy, użyjemy defaults
+    }
 
     const results = [];
 
-    for (const file of files) {
-      if (
-        file.type !== "application/pdf" &&
-        !file.name.toLowerCase().endsWith(".pdf")
-      ) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const meta = metadata[i] || {
+        machine: "unknown",
+        dateFolder: "unknown",
+        fullPath: file.name,
+      };
+
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
         results.push({
           fileName: file.name,
+          filePath: meta.fullPath,
+          machine: meta.machine,
+          dateFolder: meta.dateFolder,
           fileSize: file.size,
           status: "skipped" as const,
           error: "Not a PDF file",
@@ -40,9 +61,10 @@ export async function POST(request: NextRequest) {
 
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const pdfData = await pdfParse(buffer);
-        const text = pdfData.text;
+        const buffer = new Uint8Array(arrayBuffer);
+
+        const pdf = await getDocumentProxy(buffer);
+        const { text } = await extractText(pdf, { mergePages: true });
 
         const searchLower = searchTerm.toLowerCase();
         const textLower = text.toLowerCase();
@@ -58,7 +80,10 @@ export async function POST(request: NextRequest) {
 
             if (contexts.length < 3) {
               const start = Math.max(0, pos - 80);
-              const end = Math.min(text.length, pos + searchTerm.length + 80);
+              const end = Math.min(
+                text.length,
+                pos + searchTerm.length + 80
+              );
               let ctx = text.substring(start, end).trim();
               ctx = ctx.replace(/\n+/g, " ").replace(/\s+/g, " ");
               if (start > 0) ctx = "..." + ctx;
@@ -72,8 +97,11 @@ export async function POST(request: NextRequest) {
 
         results.push({
           fileName: file.name,
+          filePath: meta.fullPath,
+          machine: meta.machine,
+          dateFolder: meta.dateFolder,
           fileSize: file.size,
-          pageCount: pdfData.numpages,
+          pageCount: pdf.numPages,
           status: "processed" as const,
           found,
           matchCount,
@@ -82,6 +110,9 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         results.push({
           fileName: file.name,
+          filePath: meta.fullPath,
+          machine: meta.machine,
+          dateFolder: meta.dateFolder,
           fileSize: file.size,
           status: "error" as const,
           error: err instanceof Error ? err.message : "Unknown error",
